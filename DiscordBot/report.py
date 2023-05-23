@@ -9,16 +9,11 @@ class State(Enum):
     OFFENDER_STATUS_IDENTIFIED = auto()
     AWAITING_SPAM_TYPE = auto()
     RECEIVED_SPAM_TYPE = auto()
-    REPORT_COMPLETE = auto()
+    REPORT_COMPLETE = auto() 
 
-class Report:
-    START_KEYWORD = "report"
-    CANCEL_KEYWORD = "cancel"
-    HELP_KEYWORD = "help"
-
-class Category(Enum):
+class Category:
     SPAM = 'spam'
-    VIOLENT= 'violent'
+    VIOLENT = 'violent'
     HARASSMENT = 'harassment'
     NSFW = 'nsfw'
     HATE_SPEECH = 'hate speech'
@@ -29,6 +24,11 @@ class SpamType:
     INVITES = 'invites'
     MALICIOUS_LINKS = 'links'
     OTHER = 'other'
+        
+class Report:
+    START_KEYWORD = "report"
+    CANCEL_KEYWORD = "cancel"
+    HELP_KEYWORD = "help"
 
     def __init__(self, client):
         self.state = State.REPORT_START
@@ -37,6 +37,7 @@ class SpamType:
         self.repeat_offender = None
         self.spam_type = None
         self.block_user = None
+        
     async def handle_message(self, message):
         '''
         This function makes up the meat of the user-side reporting flow. It defines how we transition between states and what 
@@ -74,47 +75,45 @@ class SpamType:
 
             # Here we've found the message - it's up to you to decide what to do next!
             self.state = State.MESSAGE_IDENTIFIED
-            report = "I found this message:", "```" + message.author.name + ": " + message.content + "``` \n" + "Please reply with the options that closely match the reason for your report : \n"
-            report += "1. Spam; type 'spam' \n"
-            report += "2. Violent Content; type 'violent' \n"
-            report += "3. Bullying or Harassment; type 'harassment' \n"
-            report += "4. NSFW Content; type 'nsfw' \n"
-            report += "5. Hate Speech; type 'hate speech' \n"
-            report += "6. Other; type 'other' \n"
-            return [report]
+            report_reply = "I found this message:" + "```" + message.author.name + ": " + message.content + "``` \n" + "Please reply with the options that closely match the reason for your report: \n"
+            report_reply += "1. Spam; type 'spam' \n"
+            report_reply += "2. Violent Content; type 'violent' \n"
+            report_reply += "3. Bullying or Harassment; type 'harassment' \n"
+            report_reply += "4. NSFW Content; type 'nsfw' \n"
+            report_reply += "5. Hate Speech; type 'hate speech' \n"
+            report_reply += "6. Other; type 'other' \n"
+            return [report_reply]
     
         if self.state == State.MESSAGE_IDENTIFIED:
             if message.content not in [Category.SPAM, Category.VIOLENT, Category.HARASSMENT, Category.NSFW, Category.HATE_SPEECH, Category.OTHER]:
-                report = "I'm sorry, I didn't understand that. Please reply with the options that closely match the reason for your report : \n"
-                report += "1. Spam; type 'spam' \n"
-                report += "2. Violent Content; type 'violent' \n"
-                report += "3. Bullying or Harassment; type 'harassment' \n"
-                report += "4. NSFW Content; type 'nsfw' \n"
-                report += "5. Hate Speech; type 'hate speech' \n"
-                report += "6. Other; type 'other' \n"
-                return [report]
+                report_reply = "I'm sorry, I didn't understand that. Please reply with the options that closely match the reason for your report : \n"
+                report_reply += "1. Spam; type 'spam' \n"
+                report_reply += "2. Violent Content; type 'violent' \n"
+                report_reply += "3. Bullying or Harassment; type 'harassment' \n"
+                report_reply += "4. NSFW Content; type 'nsfw' \n"
+                report_reply += "5. Hate Speech; type 'hate speech' \n"
+                report_reply += "6. Other; type 'other' \n"
+                return [report_reply]
             if message.content != Category.SPAM:
                 self.state = State.REPORT_COMPLETE
-                return ["Thank you for your report. I have forwarded it to the moderators of this server for immediate action. \
-                        Any content that violates the Discord Terms of Service or this server's rules will be removed. \
-                        The reported user will also be banned temporarily or permanently. We thank you for making this server a safe place!\n"]
+                return ["Thank you for your report. I have forwarded it to the moderators of this server for immediate action. Any content that violates the Discord Terms of Service or this server's rules will be removed. The reported user will also be banned temporarily or permanently. We thank you for making this server a safe place!\n"]
             else: # spam
                 self.state = State.OFFENDER_STATUS_IDENTIFIED
-                report = "Is this a repeat offender? \n Reply with 'yes' or 'no.' \n"
-                return [report]
+                report_reply = "Is this a repeat offender? \n Reply with 'yes' or 'no.' \n"
+                return [report_reply]
         
         if self.state == State.OFFENDER_STATUS_IDENTIFIED:
-            report = ''
+            report_reply = ''
             if message.content not in ['yes', 'no']:
-                report += "I'm sorry, I didn't understand that. Is this a repeat offender? \n Reply with 'yes' or 'no.' \n"
-                return [report]
+                report_reply += "I'm sorry, I didn't understand that. Is this a repeat offender? \n Reply with 'yes' or 'no.' \n"
+                return [report_reply]
             if message.content == 'yes':
                 self.repeat_offender = True
-                report += "I have noted that this is a repeat offender. \n"
+                report_reply += "I have noted that this is a repeat offender. \n"
             else:
                 self.repeat_offender = False
             self.state = State.AWAITING_SPAM_TYPE
-            return ["Please reply with the options that closely match the type of spam present in the message: \n"
+            return [report_reply + "Please reply with the options that closely match the type of spam present in the message: \n"
                     "1. The message is an unwanted advertisement that has nothing to do with the server; type 'advertising' \n"
                     "2. Unwanted invites to other servers; type 'invites' \n"
                     "3. The message contains a suspicious, abusive, or NSFW link; type 'links' \n"
@@ -122,35 +121,34 @@ class SpamType:
 
         if self.state == State.AWAITING_SPAM_TYPE:
             if message.content not in [SpamType.ADVERTISING, SpamType.INVITES, SpamType.MALICIOUS_LINKS, SpamType.OTHER]:
-                report = "I'm sorry, I didn't understand that. Please reply with the options that closely match the type of spam present in the message: \n"
-                report += "1. The message is an unwanted advertisement that has nothing to do with the server; type 'advertising' \n"
-                report += "2. Unwanted invites to other servers; type 'invites' \n"
-                report += "3. The message contains a suspicious, abusive, or NSFW link; type 'links' \n"
-                report += "4. Other; type 'other' \n"
-                return [report]
+                report_reply = "I'm sorry, I didn't understand that. Please reply with the options that closely match the type of spam present in the message: \n"
+                report_reply += "1. The message is an unwanted advertisement that has nothing to do with the server; type 'advertising' \n"
+                report_reply += "2. Unwanted invites to other servers; type 'invites' \n"
+                report_reply += "3. The message contains a suspicious, abusive, or NSFW link; type 'links' \n"
+                report_reply += "4. Other; type 'other' \n"
+                return [report_reply]
             self.spam_type = message.content
-            return ["I have noted that the spam type is " + self.spam_type + ". Would you like to block this user and any future accounts they make? \
-                    Reply with 'yes' or 'no.' \n"]
+            self.state = State.RECEIVED_SPAM_TYPE
+            return ["I have noted that the spam type is " + self.spam_type + ". Would you like to block this user and any future accounts they make? Reply with 'yes' or 'no.' \n"]
         
         if self.state == State.RECEIVED_SPAM_TYPE:
-            report = ''
+            report_reply = ''
             if message.content not in ['yes', 'no']:
-                report += "I'm sorry, I didn't understand that. Would you like to block this user and any future accounts they make? \
-                        Reply with 'yes' or 'no.' \n"
-                return [report]
+                report_reply += "I'm sorry, I didn't understand that. Would you like to block this user and any future accounts they make? Reply with 'yes' or 'no.' \n"
+                return [report_reply]
             if message.content == 'yes':
                 self.block_user = True
-                report += "I have noted that you would like to block this user and any future accounts they make. \n"
+                report_reply += "I have noted that you would like to block this user and any future accounts they make. \n"
             self.block_user = False
             self.state = State.REPORT_COMPLETE
-            return ["Thank you for your report. I have forwarded it to the moderators of this server for immediate action. \
-                    Any content that violates the Discord Terms of Service or this servers rules will be removed. \
-                    The reported user will also be banned temporarily or permanently. We thank you for making this server a safe place!\n"]
+            return ["Thank you for your report. I have forwarded it to the moderators of this server for immediate action. Any content that violates the Discord Terms of Service or this servers rules will be removed. The reported user will also be banned temporarily or permanently. We thank you for making this server a safe place!\n"]
         return []
-    
 
-            
+    def report_complete(self):
+        return self.state == State.REPORT_COMPLETE   
+
+                
 
 
-    
+        
 
