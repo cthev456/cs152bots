@@ -34,6 +34,7 @@ class Report:
     def __init__(self, client):
         self.state = State.REPORT_START
         self.client = client
+        self.channel = None
         self.message = None
         self.report_type = None
         self.repeat_offender = None
@@ -78,6 +79,7 @@ class Report:
             # Here we've found the message - it's up to you to decide what to do next!
             self.state = State.MESSAGE_IDENTIFIED
             self.message = message
+            self.channel = channel
             report_reply = "I found this message:" + "```" + message.author.name + ": " + message.content + "``` \n" + "Please reply with the options that closely match the reason for your report: \n"
             report_reply += "1. Spam; type 'spam' \n"
             report_reply += "2. Violent Content; type 'violent' \n"
