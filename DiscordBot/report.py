@@ -9,7 +9,8 @@ class State(Enum):
     OFFENDER_STATUS_IDENTIFIED = auto()
     AWAITING_SPAM_TYPE = auto()
     RECEIVED_SPAM_TYPE = auto()
-    REPORT_COMPLETE = auto() 
+    REPORT_COMPLETE = auto()
+    MOD_COMPLETE = auto()
 
 class Category:
     SPAM = 'spam'
@@ -34,6 +35,7 @@ class Report:
         self.state = State.REPORT_START
         self.client = client
         self.message = None
+        self.report_type = None
         self.repeat_offender = None
         self.spam_type = None
         self.block_user = None
@@ -46,7 +48,7 @@ class Report:
         '''
 
         if message.content == self.CANCEL_KEYWORD:
-            self.state = State.REPORT_COMPLETE
+            self.state = State.MOD_COMPLETE
             return ["Report cancelled."]
         
         if self.state == State.REPORT_START:
@@ -75,6 +77,7 @@ class Report:
 
             # Here we've found the message - it's up to you to decide what to do next!
             self.state = State.MESSAGE_IDENTIFIED
+            self.message = message
             report_reply = "I found this message:" + "```" + message.author.name + ": " + message.content + "``` \n" + "Please reply with the options that closely match the reason for your report: \n"
             report_reply += "1. Spam; type 'spam' \n"
             report_reply += "2. Violent Content; type 'violent' \n"
@@ -95,6 +98,7 @@ class Report:
                 report_reply += "6. Other; type 'other' \n"
                 return [report_reply]
             if message.content != Category.SPAM:
+                self.report_type = message.content
                 self.state = State.REPORT_COMPLETE
                 return ["Thank you for your report. I have forwarded it to the moderators of this server for immediate action. Any content that violates the Discord Terms of Service or this server's rules will be removed. The reported user will also be banned temporarily or permanently. We thank you for making this server a safe place!\n"]
             else: # spam
@@ -147,7 +151,9 @@ class Report:
     def report_complete(self):
         return self.state == State.REPORT_COMPLETE   
 
-                
+
+    def mod_complete(self):
+        return self.state == State.MOD_COMPLETE                    
 
 
         

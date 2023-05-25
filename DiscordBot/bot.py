@@ -6,7 +6,7 @@ import json
 import logging
 import re
 import requests
-from report import Report
+from report import State, Category, SpamType, Report
 import pdb
 
 # Set up logging to the console
@@ -34,7 +34,8 @@ class ModBot(discord.Client):
         super().__init__(command_prefix='.', intents=intents)
         self.group_num = None
         self.mod_channels = {} # Map from guild to the mod channel id for that guild
-        self.reports = {} # Map from user IDs to the state of their report
+        self.reports = {}  # Map from user IDs to the state of their report
+        self.responses = json.load(open("response.json"))
 
     async def on_ready(self):
         print(f'{self.user.name} has connected to Discord! It is these guilds:')
@@ -90,13 +91,48 @@ class ModBot(discord.Client):
         if author_id not in self.reports:
             self.reports[author_id] = Report(self)
 
-        # Let the report class handle this message; forward all the messages it returns to uss
+        # Let the report class handle this message; forward all the messages it returns to us
         responses = await self.reports[author_id].handle_message(message)
         for r in responses:
             await message.channel.send(r)
 
+        # violation detection
+        if self.reports[author_id].state == State.REPORT_COMPLETE and message.content != self.reports[author_id].CANCEL_KEYWORD:
+            # None spam report, detect and reply
+            if self.reports[author_id].spam_type is None:
+                # no violation
+                eval_result = self.eval_text(self.reports[author_id].message.content)
+                if eval_result == "unidentified" or self.reports[author_id].report_type not in eval_result:
+                    mod_message = "No violation corresponding to reported type"
+                else:
+                    mod_message = f"Found violation: {eval_result}."
+                mod_message = "[Report Result]: " + mod_message
+                await message.channel.send(mod_message)
+                self.reports[author_id].state = State.MOD_COMPLETE
+            else:
+                eval_result = self.eval_text(self.reports[author_id].message.content)
+                mod_message_to_reporter = None
+                mod_message_to_reported = None
+                if "spam" not in eval_result:
+                    mod_message_to_reporter = self.responses["no_violation"]
+                else:  # must be spam
+                    if "serious" in eval_result:
+                        mod_message_to_reported = self.responses["perm_suspend"]
+                        # also delete reported message
+                        await self.reports[author_id].message.delete()
+                if mod_message_to_reporter is not None:
+                    mod_message_to_reporter = "[Report Result]: " + mod_message_to_reporter
+                    await message.channel.send(mod_message_to_reporter)
+                if mod_message_to_reported is not None:
+                    mod_message_to_reported = "[Report Result]: " + mod_message_to_reported
+                    # TODO: send this to the reported user
+                    # await message.channel.send(mod_message_to_reported)
+                self.reports[author_id].state = State.MOD_COMPLETE
+
         # If the report is complete or cancelled, remove it from our map
-        if self.reports[author_id].report_complete():
+        if self.reports[author_id].mod_complete():
+            # message to reporter
+            await message.channel.send(self.responses["report_complete"])
             self.reports.pop(author_id)
 
     async def handle_channel_message(self, message):
@@ -116,7 +152,35 @@ class ModBot(discord.Client):
         TODO: Once you know how you want to evaluate messages in your channel, 
         insert your code here! This will primarily be used in Milestone 3. 
         '''
-        return message
+        result = ""
+        if Category.SPAM in message:
+            if SpamType.ADVERTISING in message:
+                result += "spam_advertising"
+            elif SpamType.INVITES in message:
+                result += "spam_invites"
+            elif SpamType.MALICIOUS_LINKS in message:
+                result += "spam_links"
+            elif SpamType.OTHER in message:
+                result += "spam_other"
+            result += "spam"
+        elif Category.VIOLENT in message:
+            result += "violent"
+        elif Category.HARASSMENT in message:
+            result += "harassment"
+        elif Category.NSFW in message:
+            result += "nsfw"
+        elif Category.HATE_SPEECH in message:
+            result += "hate speech"
+        elif Category.OTHER in message:
+            result += "other"
+        if "serious" in message:
+            result += "_serious"
+        else:
+            result += "_minor"
+        if result != "":
+            return result
+        else:
+            return "unidentified"
 
     
     def code_format(self, text):
