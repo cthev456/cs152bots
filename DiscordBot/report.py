@@ -39,6 +39,7 @@ class Report:
         self.repeat_offender = None
         self.spam_type = None
         self.block_user = None
+        self.reported_author_id = None
         
     async def handle_message(self, message):
         '''
@@ -78,6 +79,7 @@ class Report:
             # Here we've found the message - it's up to you to decide what to do next!
             self.state = State.MESSAGE_IDENTIFIED
             self.message = message
+            self.reported_author_id = message.author.id
             report_reply = "I found this message:" + "```" + message.author.name + ": " + message.content + "``` \n" + "Please reply with the options that closely match the reason for your report: \n"
             report_reply += "1. Spam; type 'spam' \n"
             report_reply += "2. Violent Content; type 'violent' \n"

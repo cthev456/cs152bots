@@ -125,8 +125,11 @@ class ModBot(discord.Client):
                     await message.channel.send(mod_message_to_reporter)
                 if mod_message_to_reported is not None:
                     mod_message_to_reported = "[Report Result]: " + mod_message_to_reported
-                    # TODO: send this to the reported user
-                    # await message.channel.send(mod_message_to_reported)
+                    # Re-finding the user instead of just using the user from the message object
+                    # here is a little unclean, but is neccesary in case we've deleted the message
+                    member = await self.fetch_user(self.reports[author_id].reported_author_id)
+                    channel = await member.create_dm()
+                    await channel.send(mod_message_to_reported)
                 self.reports[author_id].state = State.MOD_COMPLETE
 
         # If the report is complete or cancelled, remove it from our map
