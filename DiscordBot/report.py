@@ -11,6 +11,12 @@ class State(Enum):
     RECEIVED_SPAM_TYPE = auto()
     REPORT_COMPLETE = auto()
     MOD_COMPLETE = auto()
+    MOD_REVIEWING = auto()
+    AWAITING_MOD = auto()
+    AWAITING_MOD_CONFIRM = auto()
+    AWAITING_MOD_CLASSIFICATION = auto()
+    AWAITING_MOD_SUBCLASSIFICATION = auto()
+    AWAITING_MOD_SEVERITY = auto()
 
 class Category:
     SPAM = 'spam'
@@ -30,6 +36,7 @@ class Report:
     START_KEYWORD = "report"
     CANCEL_KEYWORD = "cancel"
     HELP_KEYWORD = "help"
+    MOD_KEYWORD = "moderate"
 
     def __init__(self, client):
         self.state = State.REPORT_START
@@ -41,6 +48,10 @@ class Report:
         self.spam_type = None
         self.block_user = None
         self.reported_author_id = None
+        self.reporter_channel = None
+        self.reporter_author_id = None
+        self.eval_type = None
+        self.id = client.next_id()
         
     async def handle_message(self, message):
         '''
