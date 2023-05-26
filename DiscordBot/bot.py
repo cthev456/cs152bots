@@ -87,7 +87,7 @@ class ModBot(discord.Client):
                 mod_message = f"Found violation: {eval_result}."
                 print(f"[log] found violation {eval_result}")
             mod_message = "[Report Result]: " + mod_message
-            await report.reporter_channel.channel.send(mod_message)
+            await report.reporter_channel.send(mod_message)
             report.state = State.MOD_COMPLETE
         else:
             mod_message_to_reporter = None
@@ -133,7 +133,7 @@ class ModBot(discord.Client):
                             
             if mod_message_to_reporter is not None:
                 mod_message_to_reporter = "[Report Result]: " + mod_message_to_reporter
-                await report.reporter_channel.channel.send(mod_message_to_reporter)
+                await report.reporter_channel.send(mod_message_to_reporter)
             if mod_message_to_reported is not None:
                 mod_message_to_reported = "[Report Result]: " + mod_message_to_reported
                 # Re-finding the user instead of just using the user from the message object
