@@ -8,6 +8,9 @@ import re
 import requests
 from report import State, Category, SpamType, Report
 import pdb
+import os
+import openai
+import time
 
 # Set up logging to the console
 logger = logging.getLogger('discord')
@@ -24,6 +27,12 @@ with open(token_path) as f:
     # If you get an error here, it means your token is formatted incorrectly. Did you put it in quotes?
     tokens = json.load(f)
     discord_token = tokens['discord']
+    openai_token = tokens['openai']
+    openai_org = tokens['openai_org']
+
+
+openai.organization = openai_org
+openai.api_key = openai_token
 
 
 class ModBot(discord.Client):
@@ -87,7 +96,7 @@ class ModBot(discord.Client):
                 mod_message = f"Found violation: {eval_result}."
                 print(f"[log] found violation {eval_result}")
             mod_message = "[Report Result]: " + mod_message
-            await report.reporter_channel.channel.send(mod_message)
+            await report.reporter_channel.send(mod_message)
             report.state = State.MOD_COMPLETE
         else:
             mod_message_to_reporter = None
@@ -133,7 +142,7 @@ class ModBot(discord.Client):
                             
             if mod_message_to_reporter is not None:
                 mod_message_to_reporter = "[Report Result]: " + mod_message_to_reporter
-                await report.reporter_channel.channel.send(mod_message_to_reporter)
+                await report.reporter_channel.send(mod_message_to_reporter)
             if mod_message_to_reported is not None:
                 mod_message_to_reported = "[Report Result]: " + mod_message_to_reported
                 # Re-finding the user instead of just using the user from the message object
@@ -319,6 +328,84 @@ class ModBot(discord.Client):
         TODO: Once you know how you want to evaluate messages in your channel, 
         insert your code here! This will primarily be used in Milestone 3. 
         '''
+
+        retry = True
+        retries = 0
+        while retry and retries < 5:
+            retries += 1
+            retry = False
+            try:
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": "You are a content moderation system. Classify each input as flagged or not flagged."
+                            "Messages should be flagged if they are spam, violent, harssment, not safe for work, hate speech, or otherwise violate content policy."
+                            "If the message is flagged, make a determination if it is serious or non-serious."
+                            "If it is spam, classify it as advertising, invites to other platforms, malicious links, or other."},
+                        {"role": "user", "content": "Join my crypto discord server: https://discord.gg/XYBrZE8x."},
+                        {"role": "assistant", "content": "Flagged. Spam. Non-serious. Invites."},
+                        {"role": "user", "content": "We should play Call Of Duty Together."},
+                        {"role": "assistant", "content": "Not flagged."},
+                        {"role": "user", "content": "I'm going to kick your ass."},
+                        {"role": "assistant", "content": "Flagged. Violent. Serious."},
+                        {"role": "user", "content": message}
+                    ]
+                )
+
+                output = response['choices'][0]['message']['content']
+
+                print("GPT output: " + output)
+
+                classifications = output.split('. ')
+                if "not flagged" in classifications[0].lower() or len(classifications) < 2:
+                    return "unidentified"
+
+                result = ""
+                if "spam" in classifications.lower():
+                    if SpamType.ADVERTISING in classifications.lower():
+                        result += "violation_spam_advertising"
+                    elif SpamType.INVITES in classifications.lower():
+                        result += "violation_spam_invites"
+                    elif SpamType.MALICIOUS_LINKS in classifications.lower():
+                        result += "violation_spam_links"
+                    elif SpamType.OTHER in classifications.lower():
+                        result += "violation_spam_other"
+                    else:
+                        result += "violation_spam"
+                elif "violent" in classifications.lower():
+                    result += "violation_violent"
+                elif "harrasment" in classifications.lower():
+                    result += "violation_harassment"
+                elif "not safe for work" in classifications.lower() or "nsfw" in classifications.lower():
+                    result += "violation_nsfw"
+                elif "hate speech" in classifications.lower():
+                    result += "violation_hate_speech"
+                else:
+                    result += "violation_other"
+
+                if "non-serious" in classifications.lower():
+                    result += "_minor"
+                elif "serious" in classifications.lower():
+                    result += "_serious"
+
+                print(f"GPT classification: {result}")
+                return result
+
+            except (openai.error.APIError, openai.error.Timeout, openai.error.RateLimitError):
+                retry = True
+                print("Hit a recoverable OpenAI API error. Retrying in 1 second.")
+                time.sleep(1)
+
+            except (openai.error.APIConnectionError, 
+                    openai.errors.InvalidRequestError, 
+                    openai.errors.AuthenticationError, 
+                    openai.errors.ServiceUnavailableError
+                    ) as e:
+                print(e)
+                print("Hit unrecoverable OpenAI error. Falling back.")
+
+        print("Activating fallback.")
+        # TBH this should be better. Let's think about how to do this.
         result = ""
         if Category.SPAM in message:
             if SpamType.ADVERTISING in message:
@@ -350,7 +437,6 @@ class ModBot(discord.Client):
             return result
         else:
             return "unidentified"
-
     
     def code_format(self, text):
         ''''
