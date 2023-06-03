@@ -328,7 +328,6 @@ class ModBot(discord.Client):
         TODO: Once you know how you want to evaluate messages in your channel, 
         insert your code here! This will primarily be used in Milestone 3. 
         '''
-
         retry = True
         retries = 0
         while retry and retries < 5:
@@ -338,16 +337,21 @@ class ModBot(discord.Client):
                 response = openai.ChatCompletion.create(
                     model="gpt-3.5-turbo",
                     messages=[
-                        {"role": "system", "content": "You are a content moderation system. Classify each input as flagged or not flagged."
+                        {"role": "system", "content": "You are a content moderation system for online social media and SMS messages. Classify each message as flagged or not flagged."
                             "Messages should be flagged if they are spam, violent, harssment, not safe for work, hate speech, or otherwise violate content policy."
-                            "If the message is flagged, make a determination if it is serious or non-serious."
-                            "If it is spam, classify it as advertising, invites to other platforms, malicious links, or other."},
+                            "If the message is flagged, make a determination if it is a serious violation or non-serious violation."
+                            "If it is spam, classify it as advertising, invites to other platforms, malicious links, or other."
+                            "Your response should only contain keywords in [Flagged, Not flagged, Spam, Violent, Harrasment, Not safe for work, nsfw, Hate speech, Other, Non-serious, Serious, Advertising, Invites, Links]"},
                         {"role": "user", "content": "Join my crypto discord server: https://discord.gg/XYBrZE8x."},
                         {"role": "assistant", "content": "Flagged. Spam. Non-serious. Invites."},
                         {"role": "user", "content": "We should play Call Of Duty Together."},
                         {"role": "assistant", "content": "Not flagged."},
                         {"role": "user", "content": "I'm going to kick your ass."},
                         {"role": "assistant", "content": "Flagged. Violent. Serious."},
+                        {"role": "user", "content": "Free entry in 2 a wkly comp to win FA Cup final tkts 21st May 2005. Text FA to 87121 to receive entry question(std txt rate)T&C's apply 08452810075over18's"},
+                        {"role": "assistant", "content": "Flagged. Spam. Serious. Advertising."},
+                        {"role": "user", "content": "XXXMobileMovieClub: To use your credit, click the WAP link in the next txt message or click here>> http://wap. xxxmobilemovieclub.com?n=QJKGIGHJJGCBL"},
+                        {"role": "assistant", "content": "Flagged. Spam. Serious. Links."},
                         {"role": "user", "content": message}
                     ]
                 )
@@ -356,10 +360,11 @@ class ModBot(discord.Client):
 
                 print("GPT output: " + output)
 
-                classifications = output.split('. ')
-                if "not flagged" in classifications[0].lower() or len(classifications) < 2:
+                classifications_list = output.split('. ')
+                if "not flagged" in classifications_list[0].lower() or len(classifications_list) < 2:
                     return "unidentified"
 
+                classifications = output
                 result = ""
                 if "spam" in classifications.lower():
                     if SpamType.ADVERTISING in classifications.lower():
