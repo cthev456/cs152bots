@@ -335,11 +335,11 @@ class ModBot(discord.Client):
             retry = False
             try:
                 response = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
+                    model="gpt-4",# "gpt-3.5-turbo",
                     messages=[
                         {"role": "system", "content": "You are a content moderation system for online social media and SMS messages. Classify each message as flagged or not flagged."
                             "Messages should be flagged if they are spam, violent, harssment, not safe for work, hate speech, or otherwise violate content policy."
-                            "If the message is flagged, make a determination if it is a serious violation or non-serious violation."
+                            "If the message is flagged, make a determination if it is a serious violation or non-serious violation. Messages with malacious intent or has potential negative impact on the receiver should be classified as serious."
                             "If it is spam, classify it as advertising, invites to other platforms, malicious links, or other."
                             "Your response should only contain keywords in [Flagged, Not flagged, Spam, Violent, Harrasment, Not safe for work, nsfw, Hate speech, Other, Non-serious, Serious, Advertising, Invites, Links]"},
                         {"role": "user", "content": "Join my crypto discord server: https://discord.gg/XYBrZE8x."},
@@ -379,7 +379,7 @@ class ModBot(discord.Client):
                         result += "violation_spam"
                 elif "violent" in classifications.lower():
                     result += "violation_violent"
-                elif "harrasment" in classifications.lower():
+                elif "harassment" in classifications.lower():
                     result += "violation_harassment"
                 elif "not safe for work" in classifications.lower() or "nsfw" in classifications.lower():
                     result += "violation_nsfw"
