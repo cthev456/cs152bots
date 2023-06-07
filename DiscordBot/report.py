@@ -52,6 +52,7 @@ class Report:
         self.reporter_author_id = None
         self.eval_type = None
         self.id = client.next_id()
+        self.priority_score = 0.0
         
     async def handle_message(self, message):
         '''

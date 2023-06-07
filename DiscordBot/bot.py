@@ -92,11 +92,13 @@ class ModBot(discord.Client):
         reported_id = report.message.author.id
         if report.spam_type is None:
             # no violation
-            if eval_result == "unidentified" or report.report_type not in eval_result:
+            print("[log] ", eval_result)
+            if eval_result == "unidentified": # or report.report_type not in eval_result:
                 mod_message = "No violation corresponding to reported type"
                 print("[log] No violation")
             else:
                 mod_message = f"Found violation: {eval_result}."
+                self.report_history[reported_id][1] += 1
                 print(f"[log] found violation {eval_result}")
             mod_message = "[Report Result]: " + mod_message
             await report.reporter_channel.send(mod_message)
@@ -110,10 +112,12 @@ class ModBot(discord.Client):
             else:  # must be spam
                 if "serious" in eval_result:
                     mod_message_to_reported = self.responses["perm_suspend"]
+                    self.report_history[reported_id][1] += 1
                     # also delete reported message
                     await report.message.delete()
                     print("[log] serious, perm suspend, delete message")
                 else:  # minor offense
+                    self.report_history[reported_id][1] += 1
                     # check account history
                     user_history = [_m async for _m in report.channel.history(limit=100) if _m.author.id == reported_id]
                     eval_results = [self.eval_text(_m.content) for _m in user_history]
@@ -154,10 +158,19 @@ class ModBot(discord.Client):
                 channel = await member.create_dm()
                 await channel.send(mod_message_to_reported)
             report.state = State.MOD_COMPLETE
+        # record report history
+        with open("report_history.json", "w") as f:
+            json.dump(self.report_history, f)
 
     async def handle_mod_flow(self, message):
         author_id = message.author.id
         mod_channel = list(self.mod_channels.values())[0]
+
+        # show list of reports sorted by order
+        sorted_reports = [report for report in self.reports.values()]
+        sorted_reports.sort(reverse=True, key=lambda x: x.priority_score)
+        sorted_reports = [(report.id, report.priority_score) for report in sorted_reports]
+        await mod_channel.send(f"List of reports sorted by priority: {sorted_reports}")
 
         if author_id not in self.moderation_actions:
             self.moderation_actions[author_id] = None
@@ -172,7 +185,7 @@ class ModBot(discord.Client):
                     if report.state == State.AWAITING_MOD:
                         self.moderation_actions[author_id] = report
                         await mod_channel.send('I found the report with this message:' + "```" + report.message.author.name + ": " + report.message.content + "``` \n")
-                        report.eval_type = self.eval_text(report.message.content)
+                        # report.eval_type = self.eval_text(report.message.content)
                         await mod_channel.send(f'The autoclassifier thinks this is a violation of type {report.eval_type}. Is this correct?')
                         report.state = State.AWAITING_MOD_CONFIRM
                         return
@@ -297,12 +310,25 @@ class ModBot(discord.Client):
             # record report history for this user
             reported_id = self.reports[author_id].message.author.id
             if reported_id not in self.report_history:
-                self.report_history[reported_id] = 0
+                self.report_history[reported_id] = [0, 0] # reported, confirmed violation
             
-            self.report_history[reported_id] += 1
+            self.report_history[reported_id][0] += 1
             # None spam report, detect and reply
             self.reports[author_id].reporter_channel = message.channel
             self.reports[author_id].reporter_author_id = author_id
+
+            self.reports[author_id].eval_type = self.eval_text(self.reports[author_id].message.content)
+
+            # compute priority score
+            auto_score = 0.0 if "violation" not in self.reports[author_id].eval_type else (
+                1.0 if "serious" in self.reports[author_id].eval_type else 0.5
+            )
+            self.reports[author_id].priority_score = 1.0 * auto_score + 0.2 * self.report_history[reported_id][1] + 0.1 * self.report_history[reported_id][0]
+            
+            print("Auto score: ", auto_score)
+            print("Confirmed: ", self.report_history[reported_id][1])
+            print("reported: ", self.report_history[reported_id][0])
+            print("Overall score: ", self.reports[author_id].priority_score)
 
             mod_channel = list(self.mod_channels.values())[0]
             await mod_channel.send(f'Report {self.reports[author_id].id} requires moderation')
@@ -353,7 +379,7 @@ class ModBot(discord.Client):
                             "Messages should be flagged if they are spam, violent, harssment, not safe for work, hate speech, or otherwise violate content policy. Also classify a message as Other violation if the message contains the keyword 'cs152'."
                             "If the message is flagged, make a determination if it is a serious violation or non-serious violation. Messages with malicious intent or has potential negative impact on the receiver should be classified as serious."
                             "If it is spam, classify it as advertising, invites to other platforms, malicious links, or other."
-                            "Your response should only contain keywords in [Flagged, Not flagged, Spam, Violent, Harrasment, Not safe for work, nsfw, Hate speech, Other, Non-serious, Serious, Advertising, Invites, Links]"},
+                            "Your response should only contain keywords in [Flagged, Not flagged, Spam, Violent, Harrasment, Not safe for work, nsfw, Hate speech, Other, Non-serious, Serious, Advertising, Invites, Links"},
                         {"role": "user", "content": "Join my crypto discord server: https://discord.gg/XYBrZE8x."},
                         {"role": "assistant", "content": "Flagged. Spam. Non-serious. Invites."},
                         {"role": "user", "content": "We should play Call Of Duty Together."},
