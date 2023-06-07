@@ -115,26 +115,9 @@ class ModBot(discord.Client):
             if "spam" not in eval_result:
                 mod_message_to_reporter = self.responses["no_violation"]
                 print("[log] no spam violation")
-            else:  # must be spam
-                # if "severe" in eval_result:
-                #     mod_message_to_reported = self.responses["perm_suspend"]
-                #     self.report_history[reported_id][1] += 1
-                #     # also delete reported message
-                #     await report.message.delete()
-                #     print("[log] serious, perm suspend, delete message")
-                # else:  # minor offense
+            else:  
                 self.report_history[reported_id][1] += 1
-                # check account history
-                # user_history = [_m async for _m in report.channel.history(limit=100) if _m.author.id == reported_id]
-                # eval_results = [self.eval_text(_m.content) for _m in user_history]
-                # ratio_violation = 1. - eval_results.count("unidentified") / len(user_history)
-                # print(f"[log] minor offense, history violation ratio: {ratio_violation}")
-                
                 remove_public_post = False
-                # if ratio_violation > 0.5:
-                #     mod_message_to_reported = self.responses["limit_dm"]
-                #     print("[log] limit dm")
-                # else:  # check number of times reported
                 n_violation = self.report_history[reported_id][1]
                 print(f"[log] times confirmed: {n_violation}")
                 if n_violation >= 3 or "permban" in eval_result:
@@ -199,7 +182,7 @@ class ModBot(discord.Client):
                         self.moderation_actions[author_id] = report
                         await mod_channel.send('I found the report with this message:' + "```" + report.message.author.name + ": " + report.message.content + "``` \n")
                         # report.eval_type = self.eval_text(report.message.content)
-                        await mod_channel.send(f'The autoclassifier thinks this is a violation of type {report.eval_type}. Is this correct?')   
+                        await mod_channel.send(f'The autoclassifier thinks this is a violation of type {report.eval_type}. Is this correct? type "yes" or "no"')   
                         report.state = State.AWAITING_MOD_CONFIRM
                         return
                     else:
@@ -216,8 +199,8 @@ class ModBot(discord.Client):
                 return
             if message.content == "yes":
                 report.eval_type = report.eval_type.replace("second", "permban")
-                await mod_channel.send("Thank you. Finalizing evaluation.")
-                print(report.eval_type)
+                await mod_channel.send("Thank you. Finalizing evaluation.")  # original 
+                print(report.eval_type)  # original 
                 await self.handle_moderation(report, report.eval_type)
             else:
                 report.eval_type = "unidentified"
@@ -231,31 +214,12 @@ class ModBot(discord.Client):
                 await mod_channel.send("I'm sorry, I didn't understand that. Is the classification given correct? \n Reply with 'yes' or 'no.' \n")
                 return
             if message.content == 'yes':
-                if report.spam_type is None:
-                    await self.handle_moderation(report, report.eval_type)
-                    return
-                if Category.SPAM in report.eval_type: # spam
-                    report.state = State.AWAITING_MOD_SUBCLASSIFICATION
-                    report_reply = "Please reply with the options that closely match the type of spam present in the message: \n" \
-                        + "1. The message contains external link. type 'links' \n" \
-                        + "2. The message is an unwanted advertisement that has nothing to do with the server. type 'advertising' \n" \
-                        + "3. The message contains personal or financial information. type 'personal' \n" \
-                        + "4. Unwanted invites to other servers; type 'invites' \n" \
-                        + "5. Trolls/harassment; type 'troll' \n" \
-                        + "6. Human-like activities; type 'human' \n"
-                    await mod_channel.send(report_reply)
-                    return
-                else:
-                    if 'unidentified' in report.eval_type:
-                        report.eval_type = 'unidentified'
-                        report.state = State.MOD_COMPLETE
-                        await mod_channel.send("Thank you")
-                        return
-                    response = "Is the violation minor or severe?"
-                    report.eval_type = 'violation_' + message.content.split('_')[1]
-                    report.state = State.AWAITING_MOD_SEVERITY
-                    await mod_channel.send(response)
-                    return
+                if 'serious' in report.eval_type:
+                    report.eval_type += "_second"
+                    await mod_channel.send("Second moderator opinion requested. Thank you. Finalizing evaluation.")
+                await mod_channel.send("Thank you. Finalizing evaluation.")  
+                await self.handle_moderation(report, report.eval_type)
+                return
             else:
                 report.state = State.AWAITING_MOD_CLASSIFICATION
                 response = 'Ok. What type of violation is this? Please reply with one of:\n'
@@ -282,6 +246,7 @@ class ModBot(discord.Client):
                 await mod_channel.send(report_reply)
                 return
             if message.content == Category.SPAM:  # spam
+                report.eval_type += '_' + message.content
                 report.state = State.AWAITING_MOD_SUBCLASSIFICATION
                 report_reply = "Please reply with the options that closely match the type of spam present in the message: \n" \
                     + "1. The message contains external link. type 'links' \n" \
@@ -346,6 +311,9 @@ class ModBot(discord.Client):
                 await mod_channel.send("Is the link legitimate? type 'yes' or 'no'")
                 return
             else:
+                report.state = State.AWAITING_MOD_LINK_SERIOIUS
+                await mod_channel.send("Is this a serioius spam? type 'yes' or 'no'")
+                return
                 report.eval_type = "unidentified"
                 await mod_channel.send("Thank you. Finalizing evaluation.")
                 await self.handle_moderation(report, report.eval_type)
@@ -506,6 +474,7 @@ class ModBot(discord.Client):
                             "Messages should be flagged if they are spam, violent, harssment, not safe for work, hate speech, or otherwise violate content policy. Also classify a message as Other violation if the message contains the keyword 'cs152'."
                             "If the message is flagged, make a determination if it is a serious violation or non-serious violation. Messages with malicious intent or has potential negative impact on the receiver should be classified as serious."
                             "If it is spam, classify it as advertising, invites to other platforms, malicious links, or other."
+                            "Additionally, if the message is spam, classify it as serious if it contains any link, Discord invite, or any form of advertising. Otherwise, it is non-serious spam."
                             "Your response should only contain keywords in [Flagged, Not flagged, Spam, Violent, Harrasment, Not safe for work, nsfw, Hate speech, Other, Non-serious, Serious, Advertising, Invites, Links"},
                         {"role": "user", "content": "Join my crypto discord server: https://discord.gg/XYBrZE8x."},
                         {"role": "assistant", "content": "Flagged. Spam. Non-serious. Invites."},

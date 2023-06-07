@@ -215,7 +215,8 @@ class Report:
                 report_reply += "I have noted that you would like to block this user and any future accounts they make. \n"
             self.block_user = False
             self.state = State.REPORT_COMPLETE
-            return ["Thank you for your report. I have forwarded it to the moderators of this server for immediate action. Any content that violates the Discord Terms of Service or this servers rules will be removed. The reported user will also be banned temporarily or permanently. We thank you for making this server a safe place!\n"]
+            report_reply += "Thank you for your report. I have forwarded it to the moderators of this server for immediate action. Any content that violates the Discord Terms of Service or this servers rules will be removed. The reported user will also be banned temporarily or permanently. We thank you for making this server a safe place!\n"
+            return [report_reply]
         return []
 
     def report_complete(self):
