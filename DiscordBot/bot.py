@@ -89,6 +89,12 @@ class ModBot(discord.Client):
 
 
     async def handle_moderation(self, report, eval_result):
+        if "second" in eval_result:
+            print("[log]: requesting second opinion")
+            report.priority_score += 10.0
+            report.state = State.AWAITING_SECOND_MOD
+            return
+        
         reported_id = report.message.author.id
         if report.spam_type is None:
             # no violation
@@ -110,42 +116,43 @@ class ModBot(discord.Client):
                 mod_message_to_reporter = self.responses["no_violation"]
                 print("[log] no spam violation")
             else:  # must be spam
-                if "serious" in eval_result:
+                # if "severe" in eval_result:
+                #     mod_message_to_reported = self.responses["perm_suspend"]
+                #     self.report_history[reported_id][1] += 1
+                #     # also delete reported message
+                #     await report.message.delete()
+                #     print("[log] serious, perm suspend, delete message")
+                # else:  # minor offense
+                self.report_history[reported_id][1] += 1
+                # check account history
+                # user_history = [_m async for _m in report.channel.history(limit=100) if _m.author.id == reported_id]
+                # eval_results = [self.eval_text(_m.content) for _m in user_history]
+                # ratio_violation = 1. - eval_results.count("unidentified") / len(user_history)
+                # print(f"[log] minor offense, history violation ratio: {ratio_violation}")
+                
+                remove_public_post = False
+                # if ratio_violation > 0.5:
+                #     mod_message_to_reported = self.responses["limit_dm"]
+                #     print("[log] limit dm")
+                # else:  # check number of times reported
+                n_violation = self.report_history[reported_id][1]
+                print(f"[log] times confirmed: {n_violation}")
+                if n_violation >= 3 or "permban" in eval_result:
                     mod_message_to_reported = self.responses["perm_suspend"]
-                    self.report_history[reported_id][1] += 1
-                    # also delete reported message
+                    print("[log] perm suspend")
+                elif n_violation >= 2:
+                    mod_message_to_reported = self.responses["1week_suspend"]
+                    print("[log] 1 week suspend")
+                elif n_violation == 1:
+                    mod_message_to_reported = self.responses["24hr_suspend"]
+                    print("[log] 24hr suspend")
+                else:
+                    remove_public_post = False
+
+                if remove_public_post:
+                    # delete reported message
                     await report.message.delete()
-                    print("[log] serious, perm suspend, delete message")
-                else:  # minor offense
-                    self.report_history[reported_id][1] += 1
-                    # check account history
-                    user_history = [_m async for _m in report.channel.history(limit=100) if _m.author.id == reported_id]
-                    eval_results = [self.eval_text(_m.content) for _m in user_history]
-                    ratio_violation = 1. - eval_results.count("unidentified") / len(user_history)
-                    print(f"[log] minor offense, history violation ratio: {ratio_violation}")
-                    
-                    remove_public_post = True
-                    if ratio_violation > 0.5:
-                        mod_message_to_reported = self.responses["limit_dm"]
-                        print("[log] limit dm")
-                    else:  # check number of times reported
-                        n_reported = self.report_history[reported_id]
-                        print(f"[log] times reported: {n_reported}")
-                        if n_reported > 10:
-                            mod_message_to_reported = self.responses["perm_suspend"]
-                            print("[log] perm suspend")
-                        elif n_reported > 5:
-                            mod_message_to_reported = self.responses["warning"]
-                            print("[log] warning")
-                        elif n_reported > 3:
-                            mod_message_to_reported = self.responses["limit_dm"]
-                            print("[log] limit dm")
-                        else:
-                            remove_public_post = False
-                    if remove_public_post:
-                        # delete reported message
-                        await report.message.delete()
-                        print("[log] remove message")
+                    print("[log] remove message")
                             
             if mod_message_to_reporter is not None:
                 mod_message_to_reporter = "[Report Result]: " + mod_message_to_reporter
@@ -166,13 +173,13 @@ class ModBot(discord.Client):
         author_id = message.author.id
         mod_channel = list(self.mod_channels.values())[0]
 
-        # show list of reports sorted by order
-        sorted_reports = [report for report in self.reports.values()]
-        sorted_reports.sort(reverse=True, key=lambda x: x.priority_score)
-        sorted_reports = [(report.id, report.priority_score) for report in sorted_reports]
-        await mod_channel.send(f"List of reports sorted by priority: {sorted_reports}")
 
-        if author_id not in self.moderation_actions:
+        if author_id not in self.moderation_actions or message.content == "moderate":
+            # show list of reports sorted by order
+            sorted_reports = [report for report in self.reports.values()]
+            sorted_reports.sort(reverse=True, key=lambda x: x.priority_score)
+            sorted_reports = [(report.id, report.priority_score) for report in sorted_reports]
+            await mod_channel.send(f"List of reports sorted by priority: {sorted_reports}")
             self.moderation_actions[author_id] = None
             await mod_channel.send('Please say the id of the report to moderate')
             return
@@ -182,11 +189,17 @@ class ModBot(discord.Client):
             report_id = int(message.content)
             for report in self.reports.values():
                 if report.id == report_id:
+                    if report.state == State.AWAITING_SECOND_MOD:
+                        self.moderation_actions[author_id] = report
+                        if report.state == State.AWAITING_SECOND_MOD:
+                            report.state = State.AWAITING_SECOND_MOD_CONFIRM
+                            await mod_channel.send(f"Do you agree with the first moderator's judgement: {report.eval_type}? type 'yes' or 'no'")
+                            return
                     if report.state == State.AWAITING_MOD:
                         self.moderation_actions[author_id] = report
                         await mod_channel.send('I found the report with this message:' + "```" + report.message.author.name + ": " + report.message.content + "``` \n")
                         # report.eval_type = self.eval_text(report.message.content)
-                        await mod_channel.send(f'The autoclassifier thinks this is a violation of type {report.eval_type}. Is this correct?')
+                        await mod_channel.send(f'The autoclassifier thinks this is a violation of type {report.eval_type}. Is this correct?')   
                         report.state = State.AWAITING_MOD_CONFIRM
                         return
                     else:
@@ -195,13 +208,54 @@ class ModBot(discord.Client):
 
         report = self.moderation_actions[author_id]
 
+        
+
+        if report.state == State.AWAITING_SECOND_MOD_CONFIRM:
+            if message.content not in ['yes', 'no']:
+                await mod_channel.send("I'm sorry, I didn't understand that. Reply with 'yes' or 'no.' \n")
+                return
+            if message.content == "yes":
+                report.eval_type = report.eval_type.replace("second", "permban")
+                await mod_channel.send("Thank you. Finalizing evaluation.")
+                print(report.eval_type)
+                await self.handle_moderation(report, report.eval_type)
+            else:
+                report.eval_type = "unidentified"
+                await mod_channel.send("Thank you. Finalizing evaluation.")
+                await self.handle_moderation(report, report.eval_type)
+
+
         if report.state == State.AWAITING_MOD_CONFIRM:
             report_reply = ''
             if message.content not in ['yes', 'no']:
-                report_reply += "I'm sorry, I didn't understand that. Is the classification given correct? \n Reply with 'yes' or 'no.' \n"
-                return [report_reply]
+                await mod_channel.send("I'm sorry, I didn't understand that. Is the classification given correct? \n Reply with 'yes' or 'no.' \n")
+                return
             if message.content == 'yes':
-                await self.handle_moderation(report, report.eval_type)
+                if report.spam_type is None:
+                    await self.handle_moderation(report, report.eval_type)
+                    return
+                if Category.SPAM in report.eval_type: # spam
+                    report.state = State.AWAITING_MOD_SUBCLASSIFICATION
+                    report_reply = "Please reply with the options that closely match the type of spam present in the message: \n" \
+                        + "1. The message contains external link. type 'links' \n" \
+                        + "2. The message is an unwanted advertisement that has nothing to do with the server. type 'advertising' \n" \
+                        + "3. The message contains personal or financial information. type 'personal' \n" \
+                        + "4. Unwanted invites to other servers; type 'invites' \n" \
+                        + "5. Trolls/harassment; type 'troll' \n" \
+                        + "6. Human-like activities; type 'human' \n"
+                    await mod_channel.send(report_reply)
+                    return
+                else:
+                    if 'unidentified' in report.eval_type:
+                        report.eval_type = 'unidentified'
+                        report.state = State.MOD_COMPLETE
+                        await mod_channel.send("Thank you")
+                        return
+                    response = "Is the violation minor or severe?"
+                    report.eval_type = 'violation_' + message.content.split('_')[1]
+                    report.state = State.AWAITING_MOD_SEVERITY
+                    await mod_channel.send(response)
+                    return
             else:
                 report.state = State.AWAITING_MOD_CLASSIFICATION
                 response = 'Ok. What type of violation is this? Please reply with one of:\n'
@@ -227,16 +281,17 @@ class ModBot(discord.Client):
                 report_reply += "7. None; type 'unidentified'"
                 await mod_channel.send(report_reply)
                 return
-            if message.content == Category.SPAM: # spam
+            if message.content == Category.SPAM:  # spam
                 report.state = State.AWAITING_MOD_SUBCLASSIFICATION
                 report_reply = "Please reply with the options that closely match the type of spam present in the message: \n" \
-                    + "1. The message is an unwanted advertisement that has nothing to do with the server; type 'advertising' \n" \
-                    + "2. Unwanted invites to other servers; type 'invites' \n" \
-                    + "3. The message contains a suspicious, abusive, or NSFW link; type 'links' \n" \
-                    + "4. Other; type 'other' \n"
+                    + "1. The message contains external link. type 'links' \n" \
+                    + "2. The message is an unwanted advertisement that has nothing to do with the server. type 'advertising' \n" \
+                    + "3. The message contains personal or financial information. type 'personal' \n" \
+                    + "4. Unwanted invites to other servers; type 'invites' \n" \
+                    + "5. Trolls/harassment; type 'troll' \n" \
+                    + "6. Human-like activities; type 'human' \n"
                 await mod_channel.send(report_reply)
                 return
-
             else:
                 if message.content == 'unidentified':
                     report.eval_type = 'unidentified'
@@ -250,19 +305,90 @@ class ModBot(discord.Client):
                 return
 
         if report.state == State.AWAITING_MOD_SUBCLASSIFICATION:
-            if message.content not in [SpamType.ADVERTISING, SpamType.INVITES, SpamType.MALICIOUS_LINKS, SpamType.OTHER]:
-                report_reply = "I'm sorry, I didn't understand that. Please reply with the options that closely match the type of spam present in the message: \n"
-                report_reply += "1. The message is an unwanted advertisement that has nothing to do with the server; type 'advertising' \n"
-                report_reply += "2. Unwanted invites to other servers; type 'invites' \n"
-                report_reply += "3. The message contains a suspicious, abusive, or NSFW link; type 'links' \n"
-                report_reply += "4. Other; type 'other' \n"
+            if message.content not in [SpamType.LINKS, SpamType.PERSONAL, SpamType.TROLL, SpamType.HUMAN, SpamType.ADVERTISING, SpamType.INVITES]:
+                report_reply = "I'm sorry, I didn't understand that. Please reply with the options that closely match the type of spam present in the message: \n" \
+                    + "1. The message contains external link. type 'links' \n" \
+                    + "2. The message is an unwanted advertisement that has nothing to do with the server. type 'advertising' \n" \
+                    + "3. The message contains personal or financial information. type 'personal' \n" \
+                    + "4. Unwanted invites to other servers; type 'invites' \n" \
+                    + "5. Trolls/harassment; type 'troll' \n" \
+                    + "6. Human-like activities; type 'human' \n"
                 await mod_channel.send(report_reply)
                 return
             report.eval_type += '_' + message.content
-            report.state = State.AWAITING_MOD_SEVERITY
-            response = "Is the violation minor or severe?"
-            await mod_channel.send(response)
-            return
+
+            report.spam_type = message.content
+
+            if message.content in [SpamType.ADVERTISING, SpamType.PERSONAL, SpamType.INVITES]:
+                report.state = State.AWAITING_MOD_LINK_INVOLVE
+                await mod_channel.send("Is there a link in the message? type 'yes' or 'no'")
+                return
+            elif message.content in [SpamType.LINKS]:
+                report.state = State.AWAITING_MOD_LINK_LEGIT
+                await mod_channel.send("Is the link legitimate? type 'yes' or 'no'")
+                return
+            elif message.content in [SpamType.TROLL, SpamType.HUMAN]:
+                report.state = State.AWAITING_MOD_MINOR_SPAM
+                await mod_channel.send("Is this a minor spam violation? type 'yes' or 'no'")
+                return
+        
+            # report.state = State.AWAITING_MOD_SEVERITY
+            # response = "Is the violation minor or severe?"
+            # await mod_channel.send(response)
+            # return
+
+        if report.state == State.AWAITING_MOD_LINK_INVOLVE:
+            if message.content not in ['yes', 'no']:
+                await mod_channel.send("Please type 'yes' or 'no'")
+                return
+            if message.content == "yes":
+                report.state = State.AWAITING_MOD_LINK_LEGIT
+                await mod_channel.send("Is the link legitimate? type 'yes' or 'no'")
+                return
+            else:
+                report.eval_type = "unidentified"
+                await mod_channel.send("Thank you. Finalizing evaluation.")
+                await self.handle_moderation(report, report.eval_type)
+        
+        if report.state == State.AWAITING_MOD_LINK_LEGIT:
+            if message.content not in ['yes', 'no']:
+                await mod_channel.send("Please type 'yes' or 'no'")
+                return
+            if message.content == "yes":
+                report.state = State.AWAITING_MOD_LINK_SERIOIUS
+                await mod_channel.send("Is this a serioius spam? type 'yes' or 'no'")
+                return
+            else:
+                report.eval_type += "_second"
+                await mod_channel.send("Second moderator opinion requested. Thank you. Finalizing evaluation.")
+                await self.handle_moderation(report, report.eval_type)
+
+        if report.state == State.AWAITING_MOD_LINK_SERIOIUS:
+            if message.content not in ['yes', 'no']:
+                await mod_channel.send("Please type 'yes' or 'no'")
+                return
+            if message.content == "yes":
+                report.eval_type += "_second"
+                await mod_channel.send("Second moderator opinion requested. Thank you. Finalizing evaluation.")
+                await self.handle_moderation(report, report.eval_type)
+            else:
+                report.eval_type = "unidentified"
+                await mod_channel.send("Thank you. Finalizing evaluation.")
+                await self.handle_moderation(report, report.eval_type)
+
+        if report.state == State.AWAITING_MOD_MINOR_SPAM:
+            if message.content not in ['yes', 'no']:
+                await mod_channel.send("Please type 'yes' or 'no'")
+                return
+            if message.content == "yes":
+                await mod_channel.send("Thank you. Finalizing evaluation.")
+                await self.handle_moderation(report, report.eval_type)
+            else:
+                report.eval_type = "unidentified"
+                await mod_channel.send("Thank you. Finalizing evaluation.")
+                await self.handle_moderation(report, report.eval_type)
+
+
 
         if report.state == State.AWAITING_MOD_SEVERITY:
             if message.content not in ['minor', 'severe']:
@@ -324,7 +450,8 @@ class ModBot(discord.Client):
                 1.0 if "serious" in self.reports[author_id].eval_type else 0.5
             )
             self.reports[author_id].priority_score = 1.0 * auto_score + 0.2 * self.report_history[reported_id][1] + 0.1 * self.report_history[reported_id][0]
-            
+            # self.reports[author_id].priority_score += (10.0 if "second" in self.reports[author_id].eval_type else 0.0)
+
             print("Auto score: ", auto_score)
             print("Confirmed: ", self.report_history[reported_id][1])
             print("reported: ", self.report_history[reported_id][0])

@@ -19,6 +19,13 @@ class State(Enum):
     AWAITING_MOD_CLASSIFICATION = auto()
     AWAITING_MOD_SUBCLASSIFICATION = auto()
     AWAITING_MOD_SEVERITY = auto()
+    AWAITING_MOD_LINK_INVOLVE = auto()
+    AWAITING_MOD_LINK_LEGIT = auto()
+    AWAITING_MOD_MINOR_SPAM = auto()
+    AWAITING_MOD_LINK_SERIOIUS = auto()
+    AWAITING_MOD_REPEATED = auto()
+    AWAITING_SECOND_MOD = auto()
+    AWAITING_SECOND_MOD_CONFIRM = auto()
 
 class Category:
     SPAM = 'spam'
@@ -29,6 +36,10 @@ class Category:
     OTHER = 'other'
 
 class SpamType:
+    LINKS = "links"
+    PERSONAL = "personal"
+    TROLL = "troll"
+    HUMAN = "human"
     ADVERTISING = 'advertising'
     INVITES = 'invites'
     MALICIOUS_LINKS = 'links'
@@ -68,7 +79,7 @@ class Report:
             self.state = State.MOD_COMPLETE
             return ["Report cancelled."]
         
-        if self.state == State.REPORT_START:
+        if message.content == "report" and self.state in [State.MOD_COMPLETE, State.REPORT_START]:
             reply =  "Thank you for starting the reporting process. "
             reply += "Say `help` at any time for more information. At any point, you can say 'cancel' to cancel the entire report. \n\n"
             reply += "Please copy paste the link to the message you want to report.\n"
